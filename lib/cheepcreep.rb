@@ -52,10 +52,6 @@ class Github
     users_array
   end
 
-  #Remember that you'll need to call .to_json on the value of :body
-  #[post_body]: http://www.rubydoc.info/github/jnunemaker/httparty -->
-  #/HTTParty/ClassMethods#post-instance_method
-
   #[list-gists]: https://developer.github.com/v3/gists/#list-gists
   def list_gists(user, opts={})
     options = {:body => opts}
@@ -73,13 +69,13 @@ class Github
       gists = list_gists(user)
       puts "user: #{gists[0]['owner']['login']}"
     rescue NoMethodError
-      puts "\n\nTHERE ARE NO MORE GISTS TO #{function_call.upcase}\n\n"
+      puts "\n\nTHERE ARE NO GISTS TO #{function_call.upcase}\n\n"
       return
     end
     gists.each_with_index do |gist, i| 
       puts "#{i+1}) gist name: #{gist['files'].keys[0]}, 
       gist id: #{gist['id']},
-      starred: #{starred?gist['id']}\n\n"
+      starred: #{starred?(gist['id'])}\n\n"
     end 
     puts "\n\nwhich gist would you like to #{function_call}?"
     index = gets.chomp.to_i - 1
@@ -88,53 +84,60 @@ class Github
     [id, name]
   end
 
-  #The **Create** and **Edit** methods are a bit tricky. Do them last.
-  #In particular, you'll want their methods to take a file path and
-  #put its contents into the gist files array with [File.read][file-read]
-  #[file-read]: http://ruby.bastardsbook.com/chapters/io/
+  def generate_options(filepath, opts={})
+    File.open(filepath, 'r') do |f|
+      name = File.basename(f)
+      content = f.read
+      inline_opts = {'files' => {name => {'content' => content}}}
+      options = inline_opts.merge(opts)
+      return [options, name]
+    end
+  end
+
+  def response_handling(resp, return_code, gist_name, function_call)
+    resp.code == return_code ? response =  "The gist, #{gist_name}, has been successfully #{function_call}" : response = "there was a problem processing the request, the gist, #{name}, was NOT #{function_call}"
+    binding.pry
+    puts response
+  end
 
   #[create-gist]: https://developer.github.com/v3/gists/#create-a-gist
   def create_gist(filepath, opts={})
-    #can pass description => "text", public => boolean to opts
-    f = File.open(filepath, 'r')
-    file_name = File.basename(f)
-    content = f.read
-    inline_opts = {'files' => {file_name => {'content' => content}}}
-    opts = inline_opts.merge(opts)
-    options = {:body => opts.to_json}
+    #can pass 'description' => "text", 'public' => boolean to opts
+    create_opts, name = generate_options(filepath, opts)
+    options = {:body => create_opts.to_json}
     resp = self.class.post("/gists", options)
-    resp.code == 201 ? response = "successfully created gist, #{file_name}." : response = "could not create the gist, #{file_name}"
-    puts response
+    response_handling(201, name, "created")
   end
+
   #[edit-gist]: https://developer.github.com/v3/gists/#edit-a-gist
   def edit_gist(filepath, opts = {})
-    id, name = select_gist_id("delete")
-    options = {:body => opts}
-    response = self.class.patch("/gists/#{id}")
+    #can pass 'description' => "text", 'filename' => "text.ext"
+    id, name = select_gist_id("edit")
+    edit_opts = generate_options(filepath, opts)[0]
+    options = {:body => edit_opts.to_json}
+    resp = self.class.patch("/gists/#{id}", options)
+    response_handling(200, name, "edited")
   end
 
   #[delete-gist]: https://developer.github.com/v3/gists/#delete-a-gist
   def delete_gist
     id, name = select_gist_id("delete")
     resp = self.class.delete("/gists/#{id}")
-    resp.code == 204 ? response = "\nThe gist, #{name}, has been deleted\n" : response = "\nthere was a problem deleting the gist, #{name}.\n"
-    puts response
+    response_handling(204, name, "deleted")
   end
 
   #[star-a-gist]: https://developer.github.com/v3/gists/#star-a-gist
   def star_gist(user)
     id, name = select_gist_id("star", user)
     resp = self.class.put("/gists/#{id}/star")
-    resp.code == 204 ? respones =  "The gist, #{name}, has been starred" : response = "there was a problem starring the gist, #{name}"
-    puts response
+    response_handling(204, name, "starred")
   end
 
   #[unstar-a-gist]: https://developer.github.com/v3/gists/#unstar-a-gist
   def unstar_gist(user)
-    id, name = select_gist_id("star", user)
+    id, name = select_gist_id("unstar", user)
     resp = self.class.delete("/gists/#{id}/star")
-    respo.code == 204 ? respones =  "The gist, #{name}, has been unstarred" : response = "there was a problem unstarring the gist, #{name}"
-    puts response
+    response_handling(resp, 204, name, "unstarred")
   end
 end
 
@@ -146,14 +149,11 @@ def add_users_to_db(user)
   end
 end
 
-#pass either :
-def show_users_ordered_by(query)
+def show_users_ordered_by(query="followers")
   CheepCreep::GithubUser.order(query).reverse.each do |u|
     puts "login: #{u.login}, name: #{u.name}, followers: #{u.followers}, public repos #{u.public_repos}"
   end
 end 
-
-
 
 binding.pry
 
@@ -163,9 +163,6 @@ binding.pry
 #How does your Client handle failure?
 #Improve this with a combination of status code checks and exception handling with `rescue`.
 ##
-
-#github_username: apitestfun password: ironyard1
-#get, change, add, or delete gists
 
 #[restful]: http://restful-api-design.readthedocs.org/en/latest/methods.html
 #[rants]: http://williamdurand.fr/2014/02/14/please-do-not-patch-like-an-idiot/
