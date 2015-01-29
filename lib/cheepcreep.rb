@@ -16,19 +16,19 @@ class Github
   base_uri 'https://api.github.com'
   basic_auth ENV['GITHUB_USER'], ENV['GITHUB_PASS']
 
-#user "/followers" or "/following" 
+#follow_type can be "followers" or "following" as of 1/29/2015
 #read Github API docs for endpoint references for 'users' queries.
-  def get_users(user, follow_type='followers')
-    resp = self.class.get("/users/#{user}/#{follow_type}")
+  def get_users(user, follow_type='followers', opts={})
+    resp = self.class.get("/users/#{user}/#{follow_type}", {:body=>opts})
     json = JSON.parse(resp.body)
     json.each {|user| get_user(user['login'])}
   end
 
-  def get_user(user)
-    resp = self.class.get("/users/#{user}")
+  def get_user(user, opts={})
+    resp = self.class.get("/users/#{user}", {:body=>opts})
     json = JSON.parse(resp.body)
   end
-  
+
   #[list-gists]: https://developer.github.com/v3/gists/#list-gists
   def list_gists(user, opts={})
     options = {:body => opts}
@@ -73,54 +73,78 @@ class Github
 
   def response_handling(resp, return_code, gist_name, function_call)
     resp.code == return_code ? response =  "The gist, #{gist_name}, has been successfully #{function_call}" : response = "there was a problem processing the request, the gist, #{name}, was NOT #{function_call}"
-    binding.pry
     puts response
   end
 
   #[create-gist]: https://developer.github.com/v3/gists/#create-a-gist
+  #test file path => /Users/brianrossetti/Programming/testrubybuild/ProgrammingRuby/IronYard/cheepcreep/gists/
+  #can pass 'description' => "text", 'public' => boolean to opts
   def create_gist(filepath, opts={})
-    #can pass 'description' => "text", 'public' => boolean to opts
-    create_opts, name = generate_options(filepath, opts)
-    options = {:body => create_opts.to_json}
-    resp = self.class.post("/gists", options)
-    response_handling(201, name, "created")
+    begin
+      create_opts, name = generate_options(filepath, opts)
+      options = {:body => create_opts.to_json}
+      resp = self.class.post("/gists", options)
+      response_handling(resp, 201, name, "created")
+    rescue SocketError => e
+      puts "\ncould not connect to Github, heres the error - SocketError - #{e}\n"
+      puts "your probably not connected to the internetz, dumbo"
+    end
   end
-
+  
+  #can pass 'description' => "text", 'filename' => "text.ext"
   #[edit-gist]: https://developer.github.com/v3/gists/#edit-a-gist
   def edit_gist(filepath, opts = {})
-    #can pass 'description' => "text", 'filename' => "text.ext"
-    id, name = select_gist_id("edit")
-    edit_opts = generate_options(filepath, opts)[0]
-    options = {:body => edit_opts.to_json}
-    resp = self.class.patch("/gists/#{id}", options)
-    response_handling(200, name, "edited")
+    begin
+      id, name = select_gist_id("edit")
+      edit_opts = generate_options(filepath, opts)[0]
+      options = {:body => edit_opts.to_json}
+      resp = self.class.patch("/gists/#{id}", options)
+      response_handling(resp, 200, name, "edited")
+    rescue SocketError => e
+      puts "\ncould not connect to Github, heres the error - SocketError - #{e}\n"
+      puts "your probably not connected to the internetz, dumbo"
+    end
   end
 
   #[delete-gist]: https://developer.github.com/v3/gists/#delete-a-gist
   def delete_gist
-    id, name = select_gist_id("delete")
-    resp = self.class.delete("/gists/#{id}")
-    response_handling(204, name, "deleted")
+    begin
+      id, name = select_gist_id("delete")
+      resp = self.class.delete("/gists/#{id}")
+      response_handling(resp, 204, name, "deleted")
+    rescue SocketError => e
+      puts "\ncould not connect to Github, heres the error - SocketError - #{e}\n"
+      puts "your probably not connected to the internetz, dumbo"
+    end
   end
 
   #[star-a-gist]: https://developer.github.com/v3/gists/#star-a-gist
   def star_gist(user)
-    id, name = select_gist_id("star", user)
-    resp = self.class.put("/gists/#{id}/star")
-    response_handling(204, name, "starred")
+    begin
+      id, name = select_gist_id("star", user)
+      resp = self.class.put("/gists/#{id}/star")
+      response_handling(resp, 204, name, "starred")
+    rescue SocketError => e
+      puts "\ncould not connect to Github, heres the error - SocketError - #{e}\n"
+      puts "your probably not connected to the internetz, dumbo"
+    end
   end
 
   #[unstar-a-gist]: https://developer.github.com/v3/gists/#unstar-a-gist
   def unstar_gist(user)
-    id, name = select_gist_id("unstar", user)
-    resp = self.class.delete("/gists/#{id}/star")
-    response_handling(resp, 204, name, "unstarred")
+    begin
+      id, name = select_gist_id("unstar", user)
+      resp = self.class.delete("/gists/#{id}/star")
+      response_handling(resp, 204, name, "unstarred")
+    rescue SocketError => e
+      puts "\ncould not connect to Github, heres the error - SocketError - #{e}\n"
+      puts "your probably not connected to the internetz, dumbo"
+    end
   end
 end
 
-def add_users_to_db(user)
-  github = Github.new()
-  users = github.get_users(user, 'followers')
+
+def add_to_db(users)
   users.sample(20).each do |user|
     CheepCreep::GithubUser.create(user['login'],
                                   user['name'],
@@ -136,6 +160,12 @@ def show_users_ordered_by(query="followers")
     puts "login: #{u.login}, name: #{u.name}, followers: #{u.followers}, public repos #{u.public_repos}"
   end
 end 
+
+def populate_users(user,follow_type)
+  github = Github.new()
+  users = github.get_users(user,follow_type)
+  add_to_db(users)
+end
 
 binding.pry
 
