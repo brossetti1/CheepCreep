@@ -19,19 +19,19 @@ class Github
 #follow_type can be "followers" or "following" as of 1/29/2015
 #read Github API docs for endpoint references for 'users' queries.
   def get_users(user, follow_type='followers', opts={})
-    resp = self.class.get("/users/#{user}/#{follow_type}", {:body=>opts})
+    resp = self.class.get("/users/#{user}/#{follow_type}", {:query=>opts})
     json = JSON.parse(resp.body)
     json.each {|user| get_user(user['login'])}
   end
 
-  def get_user(user, opts={})
-    resp = self.class.get("/users/#{user}", {:body=>opts})
+  def get_user(user)
+    resp = self.class.get("/users/#{user}")
     json = JSON.parse(resp.body)
   end
 
   #[list-gists]: https://developer.github.com/v3/gists/#list-gists
   def list_gists(user, opts={})
-    options = {:body => opts}
+    options = {:query => opts}
     resp = self.class.get("/users/#{user}/gists", options)
     json = JSON.parse(resp.body)
   end
